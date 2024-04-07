@@ -39,7 +39,7 @@ contract WalletFactory is Ownable {
 
     function singleDeploy(
         bytes32 salt
-    ) external returns (address) {
+    ) external {
         address dep = Clones.cloneDeterministic(implementation, salt);
         emit Deployed(implementation, dep);
     }
