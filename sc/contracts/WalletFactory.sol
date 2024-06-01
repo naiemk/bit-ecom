@@ -61,7 +61,7 @@ contract WalletFactory is Ownable {
     struct WalletWithBalance {
         address wallet;
         address[] tokens;
-        // uint[] balances;
+        uint[] balances;
     }
 
     function filterWithBalance(address[] calldata tokens, address[] calldata wallets
@@ -69,31 +69,49 @@ contract WalletFactory is Ownable {
         walletsWithBal = new WalletWithBalance[](wallets.length);
         for(uint i=0; i<wallets.length; i++) {
             address wallet = wallets[i];
-            bool hasEth = wallet.balance != 0;
-            uint tokWithBal = 0;
+            walletsWithBal[i] = walletWithBalance(tokens, wallet);
+        }
+    }
+
+    function walletWithBalance(address[] calldata tokens, address wallet
+    ) private view returns (WalletWithBalance memory walletsWithBal) {
+        bool hasEth = wallet.balance != 0;
+        uint tokWithBal = 0;
+        for(uint j=0; j<tokens.length; j++) {
+            if (IERC20(tokens[j]).balanceOf(wallet) != 0) {
+                tokWithBal ++;
+            }
+        }
+        if (hasEth) {
+            tokWithBal ++;
+        }
+        if (tokWithBal != 0) {
+            address[] memory subTokens = new address[](tokWithBal);
+            uint[] memory amounts = new uint[](tokWithBal);
+            uint idx = 0;
             for(uint j=0; j<tokens.length; j++) {
-                if (IERC20(tokens[i]).balanceOf(wallet) != 0) {
-                    tokWithBal ++;
+                uint bal = IERC20(tokens[j]).balanceOf(wallet);
+                if (bal != 0) {
+                    subTokens[idx] = tokens[j];
+                    amounts[idx] = bal;
+                    idx ++;
                 }
             }
-            if (hasEth || tokWithBal != 0) {
-                address[] memory subTokens = new address[](tokWithBal);
-                uint idx = 0;
-                for(uint j=0; j<tokens.length; j++) {
-                    if (IERC20(tokens[i]).balanceOf(wallet) != 0) {
-                        subTokens[idx] = tokens[i];
-                    }
-                }
-                walletsWithBal[i] = WalletWithBalance({
-                    wallet: wallet,
-                    tokens: subTokens
-                });
-            } else {
-                walletsWithBal[i] = WalletWithBalance({
-                    wallet: address(0),
-                    tokens: new address[](0)
-                });
+            if (hasEth) {
+                subTokens[idx] = address(0);
+                amounts[idx] = wallet.balance;
             }
+            walletsWithBal = WalletWithBalance({
+                wallet: wallet,
+                tokens: subTokens,
+                balances: amounts
+            });
+        } else {
+            walletsWithBal = WalletWithBalance({
+                wallet: address(0),
+                tokens: new address[](0),
+                balances: new uint[](0)
+            });
         }
     }
 
@@ -112,7 +130,7 @@ contract WalletFactory is Ownable {
         }
     }
 
-    function sweepETH(address token, address[] calldata wallets) external payable {
+    function sweepETH(address[] calldata wallets) external payable {
         for(uint i=0; i<wallets.length; i++) {
             Wallet(payable(wallets[i])).sweepETH();
         }
