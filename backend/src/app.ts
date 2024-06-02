@@ -1,8 +1,10 @@
 import Fastify, { FastifyInstance, FastifyRequest, RouteShorthandOptions } from 'fastify'
-import { LocalCache } from 'ferrum-plumbing';
+import { Container, LocalCache } from 'ferrum-plumbing';
 import { AppModule } from './AppModule';
 import { WalletService } from './data/WalletService';
 import { LambdaGlobalContext } from 'aws-lambda-helper';
+require("dotenv").config({ path: __dirname.replace('src', '') + "localConfig/dev.env" })
+console.log('PATH', __dirname.replace('src','') + "localConfig/dev.env" )
 
 interface Pagination {
   from: number; len: number;
@@ -10,12 +12,14 @@ interface Pagination {
 }
 
 const globalCache = new LocalCache();
+async function initContainer() {
+  const container = await LambdaGlobalContext.container();
+  await container.registerModule(new AppModule());
+  globalCache.set('CONTAINER', container);
+}
+
 async function getContainer() {
-    return globalCache.getAsync('CONTAINER', async () => {
-        const container = await LambdaGlobalContext.container();
-        await container.registerModule(new AppModule());
-        return container;
-    });
+  return globalCache.get('CONTAINER') as Container;
 }
 
 const server: FastifyInstance = Fastify({});
@@ -32,6 +36,15 @@ const opts: RouteShorthandOptions = {
         }
       }
     }
+  }
+}
+
+async function instrument(call: () => Promise<any>) {
+  try {
+    return await call();
+  } catch (e) {
+    console.error('Error in request', e);
+    throw e;
   }
 }
 
@@ -60,13 +73,13 @@ server.get<{Querystring: Pagination}>('/invoices', opts, async (request, reply) 
   reply.send(invoices);
 });
 
-server.post('/invoice', opts, async (request, reply) => {
+server.post('/invoice', opts, (request, reply) => instrument(async () => {
   // Create a new invoice. Invoice will be recorded, and comes with a wallet attached
   const {network, token, amountRaw, item} = request.body as any;
   const c = await getContainer();
   const invoice = await c.get<WalletService>(WalletService).newInvoice(network, token, amountRaw, Date.now(), item);
   reply.send(invoice);
-});
+}));
 
 server.post<{}>('/sweep', opts, async (request, reply) => {
   // Executes the sweep operation, using registered account for gas, for given currencies
@@ -83,7 +96,9 @@ server.post<{}>('/sweep', opts, async (request, reply) => {
 
 const start = async () => {
   try {
+    await initContainer();
     await server.listen({ port: 3000 })
+    console.log('Server listening at', server.server.address());
 
     const address = server.server.address()
     const port = typeof address === 'string' ? address : address?.port
@@ -94,6 +109,4 @@ const start = async () => {
   }
 }
 
-start()
-
-
+start();

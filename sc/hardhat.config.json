@@ -1,0 +1,14 @@
+{
+  "solidity": {
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          }
+        }
+  },
+  "remappings": [
+    "@openzeppelin/=@openzeppelin/",
+    "hardhat/=node_modules/hardhat/"
+  ]
+}

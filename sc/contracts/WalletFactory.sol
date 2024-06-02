@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
 
+import "./IWithInit.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Wallet.sol";
 
-contract WalletFactory is Ownable {
+contract WalletFactory is Ownable, IWithInit {
     address public implementation;
+    address payable public initAddr;
 
     constructor() Ownable(msg.sender) {}
 
@@ -26,11 +28,11 @@ contract WalletFactory is Ownable {
         }
     }
 
-    function deployImplementation(address payable sweepTarget) external {
+    function deployImplementation(address payable sweepTarget) external onlyOwner {
+        initAddr = sweepTarget;
         Wallet w = new Wallet{salt: 0x0000000000000000000000000000000000000000000000000000000000000011}();
-        w.setSweepTarget(sweepTarget);
-        w.transferOwnership(owner());
         implementation = address(w);
+        delete initAddr;
     }
 
     function updateImplementation(address newImplementation) onlyOwner external {

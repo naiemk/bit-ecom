@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.9;
+
+import "./IWithInit.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -8,17 +10,15 @@ interface IWallet {
     function sweepETH() external payable;
 }
 
-contract Wallet is IWallet, Ownable {
-    address payable public sweepTarget;
+contract Wallet is IWallet {
+    address payable immutable public sweepTarget;
     using SafeERC20 for IERC20;
 
-    constructor() Ownable(msg.sender) {}
+    constructor() {
+        sweepTarget = IWithInit(msg.sender).initAddr();
+    }
 
     receive() external payable {}
-
-    function setSweepTarget(address payable target) external onlyOwner {
-        sweepTarget = target;
-    }
 
     function sweep(address token) external override {
         uint balance = IERC20(token).balanceOf(address(this));
