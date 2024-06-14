@@ -3,11 +3,12 @@ import { Container, LocalCache } from 'ferrum-plumbing';
 import { AppModule } from './AppModule';
 import { WalletService } from './data/WalletService';
 import { LambdaGlobalContext } from 'aws-lambda-helper';
+import { EthereumSmartContractHelper } from 'aws-lambda-helper/dist/blockchain';
 require("dotenv").config({ path: __dirname.replace('src', '') + "localConfig/dev.env" })
 console.log('PATH', __dirname.replace('src','') + "localConfig/dev.env" )
 
 interface Pagination {
-  from: number; len: number;
+  from: number; len?: number; to?: number,
   network: string;
 }
 
@@ -25,18 +26,18 @@ async function getContainer() {
 const server: FastifyInstance = Fastify({});
 
 const opts: RouteShorthandOptions = {
-  schema: {
-    response: {
-      200: {
-        type: 'object',
-        properties: {
-          pong: {
-            type: 'string'
-          }
-        }
-      }
-    }
-  }
+  // schema: {
+  //   response: {
+  //     200: {
+  //       type: 'object',
+  //       // properties: {
+  //       //   pong: {
+  //       //     type: 'string'
+  //       //   }
+  //       // }
+  //     }
+  //   }
+  // }
 }
 
 async function instrument(call: () => Promise<any>) {
@@ -52,32 +53,72 @@ server.get('/ping', opts, async (request, reply) => {
   return { pong: 'ok' }
 });
 
-server.get<{Querystring: Pagination}>('/payments', opts, async (request, reply) => {
+server.get<{Querystring: Pagination & {paid: boolean}}>('/payments', opts, (request, reply) => instrument(async () =>{
   // Returns the list of invoices, with pagination
   const from = request.query.from || 0;
-  const len = request.query.len || 40 * 3600; // 40 hours default
-  const to = from + len;
+  const to = request.query.to || Date.now();
+  const network = request.query.network;
+  const paid = request.query.paid || false;
+  const c = await getContainer();
+  const payments = paid ? await c.get<WalletService>(WalletService).checkPaidWaitingForSweep(network, from, to)
+   : await c.get<WalletService>(WalletService).checkPayments(network, from, to);
+  reply.send(payments);
+}));
+
+server.put<{Querystring: {network: string}}>('/updatePaid', opts, (request, reply) => instrument(async () => {
+  // Returns the list of invoices, with pagination
   const network = request.query.network;
   const c = await getContainer();
-  const payments = c.get<WalletService>(WalletService).checkPayments(network, from, to);
+  const payments = await c.get<WalletService>(WalletService).checkAndUpdatePayments(network, 0, Date.now());
   reply.send(payments);
-});
+}));
 
-server.get<{Querystring: Pagination}>('/invoices', opts, async (request, reply) => {
+server.get<{Querystring: Pagination}>('/invoices', opts, (request, reply) => instrument(async () => {
   // Returns the list of wallets with balance, with pagination
   const from = request.query.from || 0;
-  const len = request.query.len || 40;
-  const to = from + len;
+  const to = request.query.to || Date.now();
   const c = await getContainer();
-  const invoices = c.get<WalletService>(WalletService).getInvoices(from, to);
-  reply.send(invoices);
-});
+  const invoices = await c.get<WalletService>(WalletService).getInvoices(from, to);
+  reply
+    .code(200)
+    .header('Content-Type', 'application/json; charset=utf-8')
+    .send(invoices);
+  return invoices;
+}));
+
+server.get<{Querystring: Pagination & {network: string}}>('/forsweep', opts, (request, reply) => instrument(async () => {
+  // Returns the list of wallets with balance, with pagination
+  const from = request.query.from || 0;
+  const to = request.query.to || Date.now();
+  const network = request.query.network;
+  const c = await getContainer();
+  const invoices = await c.get<WalletService>(WalletService).getInvoicesForSweep(network, from, to);
+  reply
+    .code(200)
+    .header('Content-Type', 'application/json; charset=utf-8')
+    .send(invoices);
+}));
+
+server.get<{Querystring: Pagination & {network: string}}>('/forsweepparams', opts, (request, reply) => instrument(async () => {
+  // Returns the list of wallets with balance, with pagination
+  const from = request.query.from || 0;
+  const to = request.query.to || Date.now();
+  const network = request.query.network;
+  const c = await getContainer();
+  const invoices = await c.get<WalletService>(WalletService).getInvoicesForSweep(network, from, to);
+  const tokens = Array.from(new Set(invoices.map(i => EthereumSmartContractHelper.parseCurrency(i.wallet.currency)[1])));
+  const addresses = Array.from(new Set(invoices.map(i => i.wallet.address)));
+  reply
+    .code(200)
+    .header('Content-Type', 'application/json; charset=utf-8')
+    .send({tokens, addresses});
+}));
 
 server.post('/invoice', opts, (request, reply) => instrument(async () => {
   // Create a new invoice. Invoice will be recorded, and comes with a wallet attached
   const {network, token, amountRaw, item} = request.body as any;
   const c = await getContainer();
-  const invoice = await c.get<WalletService>(WalletService).newInvoice(network, token, amountRaw, Date.now(), item);
+  const invoice = await c.get<WalletService>(WalletService).newInvoice(network, token, amountRaw, item);
   reply.send(invoice);
 }));
 

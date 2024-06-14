@@ -27,5 +27,8 @@
     "@typescript-eslint/parser": "^5.4.0",
     "eslint": "^8.3.0",
     "typescript": "^5.4.4"
+  },
+  "overrides": {
+    "mongoose": "^8.3.1"
   }
 }

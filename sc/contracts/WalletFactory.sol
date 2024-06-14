@@ -23,6 +23,7 @@ contract WalletFactory is Ownable, IWithInit {
     ) external view returns (address[] memory deped) {
         deped = new address[](salts.length);
         address impl = implementation;
+        require(impl != address(0), "No implementation");
         for (uint i=0; i< salts.length; i++) {
             deped[i] = Clones.predictDeterministicAddress(impl, salts[i]);
         }
@@ -50,6 +51,9 @@ contract WalletFactory is Ownable, IWithInit {
         bytes32[] calldata salts
     ) external {
         address impl = implementation;
+        if (impl == address(0)) {
+            revert("No implementation");
+        }
         for(uint i=0; i<salts.length; i++) {
             Clones.cloneDeterministic(impl, salts[i]);
         }
