@@ -4,6 +4,7 @@ import { AppModule } from './AppModule';
 import { WalletService } from './data/WalletService';
 import { LambdaGlobalContext } from 'aws-lambda-helper';
 import { EthereumSmartContractHelper } from 'aws-lambda-helper/dist/blockchain';
+import * as cfTurnstile from 'fastify-cloudflare-turnstile';
 require("dotenv").config({ path: __dirname.replace('src', '') + "localConfig/dev.env" })
 console.log('PATH', __dirname.replace('src','') + "localConfig/dev.env" )
 

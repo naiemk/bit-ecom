@@ -10,7 +10,9 @@ export class AppModule implements Module {
         await AppConfig.instance().loadConstants();
         await AppConfig.instance().forChainProviders();
         await AppConfig.instance().fromSecret('', 'BITECOM');
-        console.log('AppConfig loaded', AppConfig.instance().get(), process.env["CONFIG_FILE_BITECOM"]);
+        console.log('AppConfig loaded', 
+            // AppConfig.instance().get(),
+            process.env["CONFIG_FILE_BITECOM"]);
         c.registerSingleton(EthereumSmartContractHelper, () => new EthereumSmartContractHelper(AppConfig.instance().getChainProviders()));
         console.log('EthereumSmartContractHelper initialized');
 

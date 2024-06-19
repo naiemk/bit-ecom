@@ -5,6 +5,7 @@
   "main": "dist/app.js",
   "scripts": {
     "start": "nodemon ./src/app.ts",
+    "example": "nodemon ./src/example/payer/backend/app.ts",
     "lint": "eslint . --ext .ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,6 +16,7 @@
     "dotenv": "^16.4.5",
     "ethers": "^5.7.2",
     "fastify": "^4.26.2",
+    "fastify-cloudflare-turnstile": "^1.0.2",
     "ferrum-plumbing": "github:ferrumnet/ferrum-plumbing",
     "mongodb-client-encryption": "^6.0.0",
     "mongoose": "^8.3.1",
