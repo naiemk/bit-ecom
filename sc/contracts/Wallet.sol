@@ -6,12 +6,13 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IWallet {
+    function sweepTarget() external view returns (address payable);
     function sweep(address token) external;
     function sweepETH() external payable;
 }
 
 contract Wallet is IWallet {
-    address payable immutable public sweepTarget;
+    address payable immutable public override sweepTarget;
     using SafeERC20 for IERC20;
 
     constructor() {

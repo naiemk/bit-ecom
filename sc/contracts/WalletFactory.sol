@@ -141,4 +141,12 @@ contract WalletFactory is Ownable, IWithInit {
             Wallet(payable(wallets[i])).sweepETH();
         }
     }
+
+    function needsDeploy(address[] calldata wallets) external view returns (bool[] memory res) {
+        res = new bool[](wallets.length);
+        for(uint i=0; i<wallets.length; i++) {
+            (bool succeed, ) = wallets[i].staticcall(abi.encodeWithSelector(IWallet.sweepTarget.selector, wallets[i]));
+            res[i] = succeed;
+        }
+    }
 }
