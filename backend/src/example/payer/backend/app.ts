@@ -2,15 +2,16 @@ import Fastify, {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { Container, LocalCache } from "ferrum-plumbing";
-import { AppModule } from "../../../AppModule";
+import { Container, LocalCache, ValidationUtils } from "ferrum-plumbing";
 import { WalletService } from "../../../data/WalletService";
 import { LambdaGlobalContext } from "aws-lambda-helper";
 import cfTurnstile from "fastify-cloudflare-turnstile";
+import FastifyWebSocket from '@fastify/websocket';
 import { AppConfig } from "aws-lambda-helper/dist/AppConfig";
 import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
 import { SwapService } from "./SwapService";
 import { ExampleModule } from "./ExampleModule";
+import { WsMux } from "./WsMux";
 require("dotenv").config({ path: process.cwd() + "/localConfig/dev.env" });
 console.log("PATH", process.cwd() + "/localConfig/dev.env");
 
@@ -22,10 +23,11 @@ async function initContainer(): Promise<FastifyInstance> {
   globalCache.set("CONTAINER", container);
   const turnstileConf = AppConfig.instance().get("cfTurnstile");
   server.register(cfTurnstile, turnstileConf as any);
+  server.register(FastifyWebSocket);
   return server;
 }
 
-async function getContainer() {
+function getContainer() {
   return globalCache.get("CONTAINER") as Container;
 }
 
@@ -41,6 +43,7 @@ async function instrument(call: () => Promise<any>) {
 }
 
 function configServer(server: FastifyInstance) {
+  const wsMux = new WsMux();
   const devMode = AppConfig.instance().get("stage") === 'dev';
   server.get("/ping", opts, async (request, reply) => {
     return { pong: "ok" };
@@ -50,21 +53,38 @@ function configServer(server: FastifyInstance) {
    * Returns an invoice. Invoice has all the necessary information about payments (i.e. if the invoice is paid)
    * and all the extra data on the invoice, including traching deliverries, etc.
    */
-  server.get<{ Querystring: { id: string } }>(
-    "/invoice",
-    opts,
-    (request, reply) =>
+  server.get<{ Querystring: { id: string } }>("/invoicebyid", { }, (request) =>
       instrument(async () => {
-        // Returns the list of wallets with balance, with pagination
-        const c = await getContainer();
-        // //   const invoices = await c.get<WalletService>(WalletService).getInvoices(id, to);
-        //   reply
-        //     .code(200)
-        //     .header('Content-Type', 'application/json; charset=utf-8')
-        //     .send(invoices);
-        //   return invoices;
+        const c = getContainer();
+        ValidationUtils.isTrue(!!request.query.id, 'Invoice ID is required');
+        return await c.get<WalletService>(WalletService).getInvoiceById(request.query.id);
       })
   );
+
+  server.get<{ Querystring: { id: string } }>("/invoicews", { websocket: true }, async (socket, request) => {
+    ValidationUtils.isTrue(!!request.query.id, 'invoiceId is required');
+    if (!request.query.id) {
+      socket.send(JSON.stringify({error: 'id is required'}));
+      socket.close();
+      // socket.terminate();
+    } else {
+      wsMux.registerSocketForObjectId(request.query.id, socket);
+    }
+  });
+
+  server.post("/invoiceupdated", {}, async (request, reply) => {
+    const body = await request.body as any;
+    ValidationUtils.isTrue(!!body?.invoiceIds, 'invoiceIds are required');
+    const invoiceIds: string[] = body.invoiceIds || [];
+    const walletService = await getContainer().get<WalletService>(WalletService);
+    const invoices = await walletService.getInvoicesById(invoiceIds);
+    if (!!invoices) {
+      for(const i of invoices) {
+        wsMux.notify(i.invoiceId, i);
+      }
+    }
+    reply.send({ok:'ok'});
+  });
 
   if (devMode) {
     // Write dev mode only stuff here
@@ -82,30 +102,29 @@ function configServer(server: FastifyInstance) {
         body: {
           type: 'object',
           properties: {
-            fromAddress: {type: 'string'},
             fromNetwork: {type: 'string'},
             fromCurrency: {type: 'string'},
-            toAddress: {type: 'string'},
             toNetwork: {type: 'string'},
+            toAddress: {type: 'string'},
             toCurrency: {type: 'string'},
-            receiveAmountRaw: {type: 'string'},
+            toAmountRaw: {type: 'string'},
           },
-          required: ['fromAddress', 'fromNetwork', 'fromCurrency', 'toAddress', 'toNetwork', 'toCurrency', 'receiveAmountRaw'],
+          required: ['fromNetwork', 'fromCurrency', 'toAddress', 'toNetwork', 'toCurrency', 'toAmountRaw'],
         }
       }
     },
     (request, reply) =>
       instrument(async () => {
-        const { fromAddress, fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, receiveAmountRaw } = request.body as any;
+        const { fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, toAmountRaw } = request.body as any;
         const c = await getContainer();
-        const sendAmountRaw = await c.get<SwapService>(SwapService).calculateSwapAmount(
-          fromCurrency, toCurrency, receiveAmountRaw);
+        const fromAmountRaw = await c.get<SwapService>(SwapService).calculateSwapAmount(
+          fromCurrency, toCurrency, toAmountRaw);
         const item = {
-          fromAddress, fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, sendAmountRaw, receiveAmountRaw,
+          fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, fromAmountRaw, toAmountRaw,
         };
         const invoice = await c
           .get<WalletService>(WalletService)
-          .newInvoice(fromNetwork, EthereumSmartContractHelper.parseCurrency(fromCurrency)[1], sendAmountRaw, item);
+          .newInvoice(fromNetwork, EthereumSmartContractHelper.parseCurrency(fromCurrency)[1], fromAmountRaw, item);
         reply.send(invoice);
       })
   );

@@ -10,7 +10,6 @@ import { AbiCoder } from "ethers/lib/utils";
 const DEFAULT_INVOICE_TIMEOUT = 3600 * 24 * 2 * 1000; // 2 days;
 const DEFAULT_TIME_BUCKET_SECONDS = 3600 * 12;
 const DEFAULT_TIME_BUCKET_REPEAT_LEN = 128;
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export interface InvoicePayment {
     network: string;
@@ -123,6 +122,22 @@ export class WalletService extends MongooseConnection implements Injectable {
         } as WalletInstance;   
     }
 
+    async getInvoicesById(invoiceIds: string[]): Promise<Invoice<any>[]> {
+        // Return invoices with pagination
+        this.verifyInit();
+        console.log('Get invoices by ID', invoiceIds);
+        const invs = await this.invoiceModel!.find({invoiceId: {$in: invoiceIds}}).exec();
+        return invs.map(i => i.toJSON());
+    }
+
+    async getInvoiceById(invoiceId: string): Promise<Invoice<any>|null> {
+        // Return invoices with pagination
+        this.verifyInit();
+        console.log('Get invoice by ID', invoiceId);
+        const inv = await this.invoiceModel!.findOne({invoiceId}).exec();
+        return inv ? inv.toJSON() : null;
+    }
+
     async getInvoices(from: number, to: number): Promise<Invoice<any>[]> {
         // Return invoices with pagination
         this.verifyInit();
@@ -221,7 +236,6 @@ export class WalletService extends MongooseConnection implements Injectable {
     async bulkSweepPaidWallets(network: string, wallets: string[], tokens: string[]) {
         const tx = (await this.walletFactory(network)).sweepMulti(tokens, wallets);
         // Find invoices relevant to the wallets and save the tx in those invoices
-        const invoices = await this.invoiceModel!.find({ 'wallet.address': { $in: wallets } }).exec();
         // Save the tx in the wallet sweeptx field 
         await this.invoiceModel!.updateMany({ 'wallet.address': { $in: wallets } }, { $push: { sweepTxs: tx } }).exec();
     }
@@ -229,7 +243,7 @@ export class WalletService extends MongooseConnection implements Injectable {
     /**
      * Create an ethers instance of the wallet factory
      */
-    private async walletFactory(network: string): Promise<WalletFactory> {
+    async walletFactory(network: string): Promise<WalletFactory> {
         // new ethers instance of the walletfactory from typechain
         const provider = this.helper.ethersProvider(network);
         const contract = this.config.walletFactoryConracts[network];
