@@ -11,14 +11,15 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  */
 contract HoldingWallet is Ownable {
     using SafeERC20 for IERC20;
-    address payable public payer;
+    mapping(address => bool) public payers;
     uint constant timePeriod = 24 hours;
     address constant public ETH_ADDRESS = 0x0000000000000000000000000000000000000001;
     mapping(uint => mapping (address => uint)) public paidCumu; // Cumulative paid, for token
     mapping(address => uint) public allowedCumu; // Cumulative allowed per time period
+    mapping(bytes32 => bool) public payments;
 
     modifier onlyPayer() {
-        require(msg.sender == payer, "Not allowed");
+        require(payers[msg.sender], "Not allowed");
         _;
     }
 
@@ -27,8 +28,12 @@ contract HoldingWallet is Ownable {
 
     receive() external payable {}
 
-    function setPayer(address payable _payer) external onlyOwner {
-        payer = _payer;
+    function addPayer(address payer) external onlyOwner {
+        payers[payer] = true;
+    }
+
+    function removePayer(address payer) external onlyOwner {
+        delete payers[payer];
     }
 
     function setAllowance(address[] calldata tokens, uint[] calldata amounts) external onlyOwner {
@@ -37,13 +42,31 @@ contract HoldingWallet is Ownable {
         }
     }
 
-    function pay(address token, address to, uint amount) external virtual onlyPayer {
+    function sweep(address token, address sweepTarget) external onlyOwner {
+        uint balance = IERC20(token).balanceOf(address(this));
+        if (balance != 0) {
+            IERC20(token).safeTransfer(sweepTarget, balance);
+        }
+    }
+
+    function sweepETH(address payable sweepTarget) external onlyOwner {
+        uint _balance = address(this).balance;
+        if (_balance != 0) {
+            sweepTarget.transfer(_balance);
+        }
+    }
+
+    function pay(address token, address to, uint amount, bytes32 payId) external virtual onlyPayer {
+        require(!payments[payId], "already paid");
         verifyAllowance(token, amount);
+        payments[payId] = true;
         IERC20(token).safeTransfer(to, amount);
     }
 
-    function payETH(address payable to, uint amount) external virtual onlyPayer {
+    function payETH(address payable to, uint amount, bytes32 payId) external virtual onlyPayer {
+        require(!payments[payId], "already paid");
         verifyAllowance(ETH_ADDRESS, amount);
+        payments[payId] = true;
         to.transfer(amount);
     }
 
@@ -91,12 +114,16 @@ contract HoldingWalletSimple is HoldingWallet {
     constructor() {
     }
 
-    function pay(address token, address to, uint amount) external override onlyPayer {
+    function pay(address token, address to, uint amount, bytes32 payId) external override onlyPayer {
+        require(!payments[payId], "already paid");
         IERC20(token).safeTransfer(to, amount);
+        payments[payId] = true;
     }
 
-    function payETH(address payable to, uint amount) external override onlyPayer {
+    function payETH(address payable to, uint amount, bytes32 payId) external override onlyPayer {
+        require(!payments[payId], "already paid");
         to.transfer(amount);
+        payments[payId] = true;
     }
 
     function available(address token) external override view returns (uint) {

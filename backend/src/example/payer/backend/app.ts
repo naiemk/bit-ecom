@@ -12,6 +12,8 @@ import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
 import { SwapService } from "./SwapService";
 import { ExampleModule } from "./ExampleModule";
 import { WsMux } from "./WsMux";
+import { SwapInvoiceType } from "./Types";
+import { HoldingWalletService } from "../../../data/HoldingWalletService";
 require("dotenv").config({ path: process.cwd() + "/localConfig/dev.env" });
 console.log("PATH", process.cwd() + "/localConfig/dev.env");
 
@@ -20,6 +22,11 @@ async function initContainer(): Promise<FastifyInstance> {
   const server: FastifyInstance = Fastify({});
   const container = await LambdaGlobalContext.container();
   await container.registerModule(new ExampleModule());
+  container.register(HoldingWalletService, c => new HoldingWalletService(
+    AppConfig.instance().get('holdingWallets'),
+    c.get(EthereumSmartContractHelper),
+    {} as any, // No signer...
+  ));
   globalCache.set("CONTAINER", container);
   const turnstileConf = AppConfig.instance().get("cfTurnstile");
   server.register(cfTurnstile, turnstileConf as any);
@@ -47,6 +54,16 @@ function configServer(server: FastifyInstance) {
   const devMode = AppConfig.instance().get("stage") === 'dev';
   server.get("/ping", opts, async (request, reply) => {
     return { pong: "ok" };
+  });
+
+  server.get('/clientconfig', {}, async (req, res) => {
+    return AppConfig.instance().get("client");
+  });
+
+  server.get<{Querystring: {currency: string}}>('/liquidity', {}, (requsest) => {
+    const c = getContainer();
+    const service = c.get<HoldingWalletService>(HoldingWalletService);
+    return service.liquidity(requsest.query.currency);
   });
 
   /**
@@ -117,17 +134,25 @@ function configServer(server: FastifyInstance) {
       instrument(async () => {
         const { fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, toAmountRaw } = request.body as any;
         const c = await getContainer();
-        const fromAmountRaw = await c.get<SwapService>(SwapService).calculateSwapAmount(
-          fromCurrency, toCurrency, toAmountRaw);
+        const fromAmountRaw = (await c.get<SwapService>(SwapService).calculateSwapAmount(
+          fromCurrency, toCurrency, toAmountRaw)).amount;
         const item = {
           fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, fromAmountRaw, toAmountRaw,
-        };
+          payed: false, paymentTxs: [],
+        } as SwapInvoiceType;
         const invoice = await c
           .get<WalletService>(WalletService)
           .newInvoice(fromNetwork, EthereumSmartContractHelper.parseCurrency(fromCurrency)[1], fromAmountRaw, item);
         reply.send(invoice);
       })
   );
+  server.get<{Querystring: SwapInvoiceType}>('/quote', {}, async (request) => {
+    const {fromCurrency, toCurrency, toAmountRaw} = request.query;
+    ValidationUtils.allRequired({fromCurrency, toCurrency, toAmountRaw});
+    const c = await getContainer();
+    const swap = c.get<SwapService>(SwapService);
+    return await swap.calculateSwapAmount(fromCurrency, toCurrency, toAmountRaw);
+  });
 }
 
 const start = async () => {

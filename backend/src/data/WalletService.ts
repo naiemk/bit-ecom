@@ -6,43 +6,11 @@ import { BigNumber, ethers } from "ethers";
 import { Connection, Model, Schema } from "mongoose";
 import { randomBytes } from "crypto";
 import { AbiCoder } from "ethers/lib/utils";
+import { Invoice, InvoicePayment, WalletInstance, WalletServiceConfig } from "./Types";
 
 const DEFAULT_INVOICE_TIMEOUT = 3600 * 24 * 2 * 1000; // 2 days;
 const DEFAULT_TIME_BUCKET_SECONDS = 3600 * 12;
 const DEFAULT_TIME_BUCKET_REPEAT_LEN = 128;
-
-export interface InvoicePayment {
-    network: string;
-    currency: string;
-    txId: string;
-    from: string;
-    to: string
-    amountRaw: string;
-    timestamp: number;
-}
-
-export interface WalletInstance {
-    network: string;
-    address: string;
-    addressForDisplay: string;
-    currency: string;
-    timeBucket: number;
-    timeBucketWithMargin: number;
-    randomSeed: string;
-    salt: string;
-    sweepTxs: string[];
-}
-
-export interface Invoice<T> {
-    invoiceId: string;
-    wallet: WalletInstance;
-    amountRaw: string;
-    payments: InvoicePayment[];
-    paid: boolean;
-    timedOut: boolean;
-    creationTime: number;
-    item: T;
-}
 
 export const InvoiceModel = (con: Connection) => { const schema = new Schema({
         invoiceId: { type: String, required: true, unique: true },
@@ -55,14 +23,6 @@ export const InvoiceModel = (con: Connection) => { const schema = new Schema({
         item: Object,
     });
     return con.model('Invoice', schema) as any as Model<Invoice<any> & Document>;
-}
-
-export interface WalletServiceConfig {
-    // The address of the wallet factory
-    walletFactoryConracts: NetworkedConfig<string>;
-    timeBucketSeconds?: number;
-    timeBucketRepeatLen?: number;
-    invoiceTimeout?: number;
 }
 
 export class WalletService extends MongooseConnection implements Injectable {
@@ -136,6 +96,13 @@ export class WalletService extends MongooseConnection implements Injectable {
         console.log('Get invoice by ID', invoiceId);
         const inv = await this.invoiceModel!.findOne({invoiceId}).exec();
         return inv ? inv.toJSON() : null;
+    }
+
+    async updateInvoiceById(invoiceId: string, item: any) {
+        // Return invoices with pagination
+        this.verifyInit();
+        console.log('Updating invoice by ID', invoiceId);
+        await this.invoiceModel!.findOneAndUpdate({invoiceId}, {$set: {item}}).exec();
     }
 
     async getInvoices(from: number, to: number): Promise<Invoice<any>[]> {
@@ -277,4 +244,3 @@ function invoiceToPayments(network: string, tokens: string[], balances: string[]
 function hasEnoughPayments(invoice: Invoice<any>) {
     return invoice.payments.length > 0 && BigNumber.from(invoice.payments[0].amountRaw).gte(BigNumber.from(invoice.amountRaw || '0'));
 }
-
