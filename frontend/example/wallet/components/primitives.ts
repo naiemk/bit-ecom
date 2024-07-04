@@ -13,8 +13,8 @@ export const title = tv({
 			foreground: "dark:from-[#FFFFFF] dark:to-[#4B4B4B]",
 		},
 		size: {
-			sm: "text-3xl lg:text-4xl",
-			md: "text-[2.3rem] lg:text-5xl leading-9",
+			sm: "text-2xl lg:text-3xl text-[1.3rem]",
+			md: "sm:text-[1.5rem] md:text-[2.3rem] lg:text-5xl leading-9",
 			lg: "text-4xl lg:text-6xl",
 		},
 		fullWidth: {
@@ -40,6 +40,10 @@ export const title = tv({
 	],
 });
 
+export const dropdown = tv({
+	base: ''
+});
+
 export const subtitle = tv({
 	base: "w-full md:w-1/2 my-2 text-lg lg:text-xl text-default-600 block max-w-full",
 	variants: {
@@ -51,3 +55,13 @@ export const subtitle = tv({
     fullWidth: true
   }
 });
+
+export const viewWidth = tv({
+	base: "max-w-[800px] sm:w-[300px] md:w-[600px] space-y-8 p-8",
+	variants: {
+	}
+});
+
+export const errorText = tv({
+	base: "text-danger",
+})

@@ -3,7 +3,7 @@
 import { title } from "@/components/primitives";
 import {Accordion, AccordionItem} from "@nextui-org/accordion";
 
-export default function AdminPage() {
+export default function InvoicePage() {
 	return (
 		<>
 		<div >

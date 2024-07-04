@@ -16,6 +16,10 @@ export const siteConfig = {
       label: "Admin",
       href: "/admin",
     },
+    {
+      label: "Swap",
+      href: "/swap",
+    },
 	],
 	navMenuItems: [
 		{

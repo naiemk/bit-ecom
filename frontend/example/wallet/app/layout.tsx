@@ -6,6 +6,7 @@ import { Providers } from "./providers";
 import { Navbar } from "@/components/navbar";
 import { Link } from "@nextui-org/link";
 import clsx from "clsx";
+import { Init } from "./Init";
 
 export const metadata: Metadata = {
 	title: {
@@ -24,7 +25,8 @@ export const metadata: Metadata = {
 	},
 };
 
-export default function RootLayout({
+
+export default async function RootLayout({
 	children,
 }: {
 	children: React.ReactNode;
@@ -42,7 +44,10 @@ export default function RootLayout({
 					<div className="relative flex flex-col h-screen">
 						<Navbar />
 						<main className="container mx-auto max-w-7xl pt-16 px-6 flex-grow full-w">
+							<>
+							<Init/>
 							{children}
+							</>
 						</main>
 						<footer className="w-full flex items-center justify-center py-3">
 							<Link
