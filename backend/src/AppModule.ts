@@ -16,7 +16,7 @@ export class AppModule implements Module {
             // AppConfig.instance().get(),
             process.env["CONFIG_FILE_BITECOM"]);
         c.registerSingleton(EthereumSmartContractHelper, () => new EthereumSmartContractHelper(AppConfig.instance().getChainProviders()));
-        console.log('EthereumSmartContractHelper initialized');
+        console.log('EthereumSmartContractHelper initialized', AppConfig.instance().getChainProviders());
 
 
         c.registerSingleton(WalletService, () => new WalletService(

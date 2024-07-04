@@ -2,7 +2,7 @@ import Fastify, {
   FastifyInstance,
   RouteShorthandOptions,
 } from "fastify";
-import { Container, LocalCache, ValidationUtils } from "ferrum-plumbing";
+import { Container, LocalCache, Networks, ValidationUtils } from "ferrum-plumbing";
 import { WalletService } from "../../../data/WalletService";
 import { LambdaGlobalContext } from "aws-lambda-helper";
 import cfTurnstile from "fastify-cloudflare-turnstile";
@@ -14,8 +14,12 @@ import { ExampleModule } from "./ExampleModule";
 import { WsMux } from "./WsMux";
 import { SwapInvoiceType } from "./Types";
 import { HoldingWalletService } from "../../../data/HoldingWalletService";
+import cors from '@fastify/cors'
+import { ethers } from "ethers";
 require("dotenv").config({ path: process.cwd() + "/localConfig/dev.env" });
 console.log("PATH", process.cwd() + "/localConfig/dev.env");
+
+const {parseCurrency} = EthereumSmartContractHelper;
 
 const globalCache = new LocalCache();
 async function initContainer(): Promise<FastifyInstance> {
@@ -31,6 +35,7 @@ async function initContainer(): Promise<FastifyInstance> {
   const turnstileConf = AppConfig.instance().get("cfTurnstile");
   server.register(cfTurnstile, turnstileConf as any);
   server.register(FastifyWebSocket);
+  await server.register(cors, { });
   return server;
 }
 
@@ -56,9 +61,30 @@ function configServer(server: FastifyInstance) {
     return { pong: "ok" };
   });
 
-  server.get('/clientconfig', {}, async (req, res) => {
-    return AppConfig.instance().get("client");
-  });
+  server.get('/clientconfig', {}, (req, res) => instrument( async () => {
+    const c = getContainer();
+    const helper = c.get<EthereumSmartContractHelper>(EthereumSmartContractHelper);
+    const clientConfig = AppConfig.instance().get<{currencies: string[]}>("client");
+    const networkConfig = Array.from(new Set(clientConfig.currencies.map(c => parseCurrency(c)[0]))).map(
+      n => ({ ...Networks.for(n) })
+    ).reduce((dict, n) => ({...dict, [n.id]: n}), {} as any);
+    const tokenConfigF = clientConfig.currencies.map(async c => 
+      ethers.utils.isAddress(parseCurrency(c)[1]) ? ({
+        currency: c,
+        name: await helper.name(c),
+        symbol: await helper.symbol(c),
+        decimals: await helper.decimals(c),
+        isNative: false,
+      }) : ({
+        currency: c,
+        name: parseCurrency(c)[1],
+        symbol: parseCurrency(c)[1],
+        decimals: 18,
+        isNative: true,
+      }));
+    const tokenConfig = (await Promise.all(tokenConfigF)).reduce((dict, tc) => ({...dict, [tc.currency]: tc}), {} as any);
+    return {...clientConfig, networkConfig, tokenConfig};
+  }));
 
   server.get<{Querystring: {currency: string}}>('/liquidity', {}, (requsest) => {
     const c = getContainer();
@@ -119,40 +145,40 @@ function configServer(server: FastifyInstance) {
         body: {
           type: 'object',
           properties: {
-            fromNetwork: {type: 'string'},
             fromCurrency: {type: 'string'},
-            toNetwork: {type: 'string'},
             toAddress: {type: 'string'},
             toCurrency: {type: 'string'},
             toAmountRaw: {type: 'string'},
           },
-          required: ['fromNetwork', 'fromCurrency', 'toAddress', 'toNetwork', 'toCurrency', 'toAmountRaw'],
+          required: ['fromCurrency', 'toAddress', 'toCurrency', 'toAmountRaw'],
         }
       }
     },
     (request, reply) =>
       instrument(async () => {
-        const { fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, toAmountRaw } = request.body as any;
+        const { fromCurrency, toAddress, toCurrency, toAmountRaw } = request.body as any;
         const c = await getContainer();
         const fromAmountRaw = (await c.get<SwapService>(SwapService).calculateSwapAmount(
           fromCurrency, toCurrency, toAmountRaw)).amount;
+        const [fromNetwork,] = EthereumSmartContractHelper.parseCurrency(fromCurrency);
+        const [toNetwork,] = EthereumSmartContractHelper.parseCurrency(toCurrency);
         const item = {
           fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, fromAmountRaw, toAmountRaw,
           payed: false, paymentTxs: [],
         } as SwapInvoiceType;
         const invoice = await c
           .get<WalletService>(WalletService)
-          .newInvoice(fromNetwork, EthereumSmartContractHelper.parseCurrency(fromCurrency)[1], fromAmountRaw, item);
+          .newInvoice(fromNetwork, parseCurrency(fromCurrency)[1], fromAmountRaw, item);
         reply.send(invoice);
       })
   );
-  server.get<{Querystring: SwapInvoiceType}>('/quote', {}, async (request) => {
+  server.get<{Querystring: SwapInvoiceType}>('/quote', {}, (request) => instrument(async () => {
     const {fromCurrency, toCurrency, toAmountRaw} = request.query;
     ValidationUtils.allRequired({fromCurrency, toCurrency, toAmountRaw});
     const c = await getContainer();
     const swap = c.get<SwapService>(SwapService);
     return await swap.calculateSwapAmount(fromCurrency, toCurrency, toAmountRaw);
-  });
+  }));
 }
 
 const start = async () => {

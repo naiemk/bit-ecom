@@ -1,10 +1,11 @@
 import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
-import { BigNumber, ethers } from "ethers";
 import { Injectable, LocalCache, NetworkedConfig, Networks, TypeUtils } from "ferrum-plumbing";
+import { BigNumber } from "bignumber.js";
 import Moralis from 'moralis';
+import { WETH_CONFIG } from "./WethConfig";
 
 const CACHE_TIMEOUT = 3600 * 10000;
-const GAS_PRICE_EXTENSION_RATIO = 1.25; // 0.25 more gas price to ensure speed and fluctuation
+const GAS_PRICE_EXTENSION_RATIO = 2.0; // 0.25 more gas price to ensure speed and fluctuation
 
 export interface SwapConfig {
   suppotedCurrencies: string[];
@@ -22,10 +23,11 @@ export interface SwapAmount {
   processingGasFeeUsd: string;
   paymentGasFeeUsd: string;
   serviceFeeUsd: string;
-  sourceToken: string;
+  sourceCurrency: string;
   sourcePrice: string;
-  targetToken: string;
+  targetCurrency: string;
   targetPrice: string;
+  targetAmount: string;
 }
 
 export class SwapService implements Injectable {
@@ -43,48 +45,50 @@ export class SwapService implements Injectable {
       const [network, token] = EthereumSmartContractHelper.parseCurrency(currency);
       const priceObj = await Moralis.EvmApi.token.getTokenPrice({
         chain: '0x' + Networks.for(network).chainId.toString(16),
-        address: token,
+        address: EthereumSmartContractHelper.isBaseCurrency(currency) ? WETH_CONFIG[network] : token,
       });
       return priceObj.toJSON().usdPrice;
     }, CACHE_TIMEOUT);
   }
 
   async calculateSwapAmountNoFee(fromCurrency: string, toCurrency: string, receiveAmountRaw: string): Promise<string> {
-    const fromPrice = BigNumber.from(await this.usdPrice(fromCurrency));
-    const toPrice = BigNumber.from(await this.usdPrice(toCurrency));
-    return BigNumber.from(receiveAmountRaw).mul(toPrice).div(fromPrice).toString();
+    const fromPrice = new BigNumber(await this.usdPrice(fromCurrency));
+    const toPrice = new BigNumber(await this.usdPrice(toCurrency));
+    return new BigNumber(receiveAmountRaw).multipliedBy(toPrice).div(fromPrice).toString();
   }
 
   async calculateSwapAmount(fromCurrency: string, toCurrency: string, receiveAmountRaw: string): Promise<SwapAmount> {
-    const [fromNetwork, fromToken] = EthereumSmartContractHelper.parseCurrency(fromCurrency);
-    const [toNetwork, toToken] = EthereumSmartContractHelper.parseCurrency(toCurrency);
-    const toAmount = BigNumber.from(await this.helper.amountToHuman(toCurrency, receiveAmountRaw));
-    const toPrice = BigNumber.from(await this.usdPrice(toCurrency));
-    const fromPrice = BigNumber.from(await this.usdPrice(fromCurrency));
-    const toUsd = toAmount.div(toPrice);
+    const [fromNetwork,] = EthereumSmartContractHelper.parseCurrency(fromCurrency);
+    const [toNetwork,] = EthereumSmartContractHelper.parseCurrency(toCurrency);
+    const toAmount = new BigNumber(await this.helper.amountToHuman(toCurrency, receiveAmountRaw));
+    const toPrice = new BigNumber(await this.usdPrice(toCurrency));
+    const fromPrice = new BigNumber(await this.usdPrice(fromCurrency));
+    const toUsd = toAmount.multipliedBy(toPrice);
 
     // Fees come out of from
     const paymentGas = await this.gas(fromNetwork, this.config.gas.payment[fromNetwork] || this.config.gas.payment['ETHEREUM']);
-    const paymentGasUsd = fromPrice.mul(paymentGas);
+    const paymentGasUsd = fromPrice.multipliedBy(paymentGas);
     const processGas = await this.gas(toNetwork, this.config.gas.payment[toNetwork] || this.config.gas.payment['ETHEREUM']);
-    const processGasUsd = processGas.mul(processGas);
-    const serviceFeeUsd = toUsd.mul(this.config.feeRatio || 0.02);
-    const amountUsd = toUsd.add(paymentGasUsd).add(processGasUsd).add(serviceFeeUsd);
+    const processGasUsd = processGas.multipliedBy(processGas);
+    const serviceFeeUsd = toUsd.multipliedBy(this.config.feeRatio || 0.02);
+    const amountUsd = toUsd.plus(paymentGasUsd).plus(processGasUsd).plus(serviceFeeUsd);
     const amount = amountUsd.div(fromPrice);
     return {
-      amount: amount.toString(),
-      amountUsd: amountUsd.toString(),
-      paymentGasFeeUsd: paymentGasUsd.toString(),
-      processingGasFeeUsd: processGasUsd.toString(),
-      serviceFeeUsd: serviceFeeUsd.toString(),
-      sourcePrice: fromPrice.toString(),
-      sourceToken: fromToken,
-      targetPrice: toPrice.toString(),
-      targetToken: toToken,
+      amount: amount.toFixed(),
+      amountUsd: amountUsd.toFixed(),
+      paymentGasFeeUsd: paymentGasUsd.toFixed(),
+      processingGasFeeUsd: processGasUsd.toFixed(),
+      serviceFeeUsd: serviceFeeUsd.toFixed(),
+      sourcePrice: fromPrice.toFixed(),
+      sourceCurrency: fromCurrency,
+      targetPrice: toPrice.toFixed(),
+      targetCurrency: toCurrency,
+      targetAmount: toAmount.toFixed(),
     } as SwapAmount;
   }
 
   async gas(network: string, gasLimit: number): Promise<BigNumber> {
-    return BigNumber.from(this.helper.gasPrice(network)).mul(GAS_PRICE_EXTENSION_RATIO).mul(gasLimit);
+    console.log('GAAS PRICE',network, await this.helper.gasPrice(network))
+    return new BigNumber(await this.helper.gasPrice(network)).multipliedBy(GAS_PRICE_EXTENSION_RATIO).div(new BigNumber(10).pow(18)).multipliedBy(gasLimit);
   }
 }
