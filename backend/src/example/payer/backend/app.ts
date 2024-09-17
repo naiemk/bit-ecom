@@ -108,10 +108,13 @@ function configServer(server: FastifyInstance) {
   server.get<{ Querystring: { id: string } }>("/invoicews", { websocket: true }, async (socket, request) => {
     ValidationUtils.isTrue(!!request.query.id, 'invoiceId is required');
     if (!request.query.id) {
+      console.log('A websocket request without id was received. Rejecting...');
       socket.send(JSON.stringify({error: 'id is required'}));
       socket.close();
       // socket.terminate();
     } else {
+      console.log('Registering a request for invoice id ', request.query.id);
+      console.log('Active connections: ', wsMux.clients.size)
       wsMux.registerSocketForObjectId(request.query.id, socket);
     }
   });

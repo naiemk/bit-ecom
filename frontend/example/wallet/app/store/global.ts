@@ -8,7 +8,7 @@ import { Loadable } from 'jotai/vanilla/utils/loadable';
 const PROD_BACKEND = '';
 const DEV_BACKEND = 'http://localhost:8000';
 
-function backend() {
+export function backend() {
   const isLocal = window.location.hostname.toLocaleLowerCase() === 'localhost' || window.location.hostname.toLocaleLowerCase() === '127.0.0.1';
   return isLocal ? DEV_BACKEND : PROD_BACKEND;
 }

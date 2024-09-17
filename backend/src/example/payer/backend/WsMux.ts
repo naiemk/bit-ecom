@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
 
 export class WsMux {
-  private clients: Map<string, WebSocket> = new Map(); 
+  public clients: Map<string, WebSocket> = new Map(); 
   constructor() {
   }
 

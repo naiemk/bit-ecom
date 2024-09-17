@@ -3,22 +3,47 @@
 import { useParams } from "next/navigation";
 import { atom, useAtom, useAtomValue } from 'jotai';
 import { QRCode } from 'react-qrcode-logo';
-import { getInvoiceById, getInvoiceByIdLoadable, Invoice, invoinceIdFromUrl } from "@/app/store/global";
+import { backend, getInvoiceById, getInvoiceByIdLoadable, Invoice, invoinceIdFromUrl } from "@/app/store/global";
 import { Card } from "@nextui-org/card";
 import { viewWidth } from "@/components/primitives";
 import { Spinner } from "@nextui-org/spinner";
 import { useHydrateAtoms } from "jotai/utils";
 import { UiUtils } from "@/app/uiUtils";
+import { atomWithObservable } from 'jotai/utils'
+import { webSocket } from 'rxjs/webSocket';
+import { interval, map, Subject } from "rxjs";
+import { useEffect } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@nextui-org/popover";
+
+const invoiceSubject = new Subject<Invoice>();
+const invoiceFromWs = atomWithObservable(() => invoiceSubject, { initialValue: null });
+const webSocketSubed = atom(false);
 
 const InvoicePage = () => {
 	const { invoiceid } = useParams<{ invoiceid: string }>();
 	useHydrateAtoms([[invoinceIdFromUrl, invoiceid]]);
 	const invoiceLoadable = useAtomValue(getInvoiceByIdLoadable);
-	console.log('INVOICE ID: ', invoiceid, invoiceLoadable);
-	const invoice = (invoiceLoadable as any).data as any as Invoice;
+  const [wsInvoice] = useAtom(invoiceFromWs);
+	const invoice = wsInvoice && wsInvoice?.invoiceId ? wsInvoice : (invoiceLoadable as any).data as any as Invoice;
+  if (wsInvoice) {
+    console.log("USING WS INVOICE", wsInvoice);
+  }
+  
+  useEffect(() => {
+    if (invoiceid) {
+      const ws = webSocket(`${backend()}/invoicews?id=${invoiceid}`);
+      console.log('Subscribed to websocket');
+      ws.subscribe({
+        next: i => invoiceSubject.next(JSON.parse(i as any)),
+        error: e => console.error(e),
+        complete: () => console.log('ws closed...') });
+      return () => { ws.complete(); console.log('Force closed ws'); }
+    }
+  }, [invoiceid]);
 
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(invoice?.wallet?.addressForDisplay || '');
+    console.log('Copied address')
   };
 
 	if (invoiceLoadable.state === 'loading') {
@@ -59,7 +84,16 @@ const InvoicePage = () => {
       {/* QR Code and Address */}
       <div className="flex items-center mb-4 flex-col-reverse sm:flex-row">
         <div className="flex-1">
-          <a onClick={handleCopyToClipboard}><QRCode value={paymentAddress} size={128} /></a>
+          <Popover placement="top" offset={20} showArrow>
+            <PopoverTrigger>
+              <a onClick={handleCopyToClipboard}><QRCode value={paymentAddress} size={128} /></a>
+            </PopoverTrigger>
+            <PopoverContent>
+              <div className="px-1 py-2">
+                <div className="text-small font-bold">Address copied</div>
+              </div>
+            </PopoverContent>
+          </Popover>
           <p className="text-sm font-bold">{paymentAddress.substring(0, 6)}...{paymentAddress.substring(paymentAddress.length - 4, paymentAddress.length)}</p>
         </div>
         <div className="flex-1 ml-4 text-right pb-8">
@@ -98,7 +132,7 @@ const InvoicePage = () => {
       </div>
 
       {/* Invoice ID */}
-      <div className="border-t border-gray-300 pt-2 text-xs text-right">
+      <div className="border-t border-gray-300 pt-2 text-xs text-right overflow-hidden">
         <p>Invoice ID: {invoiceid}</p>
       </div>
     </div>
