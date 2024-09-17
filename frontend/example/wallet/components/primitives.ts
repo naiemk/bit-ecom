@@ -57,7 +57,7 @@ export const subtitle = tv({
 });
 
 export const viewWidth = tv({
-	base: "max-w-[800px] sm:w-[300px] md:w-[600px] space-y-8 p-8",
+	base: "max-w-full sm:w-[500px] md:w-[800px] space-y-8 p-8",
 	variants: {
 	}
 });

@@ -74,6 +74,18 @@ server.put<{Querystring: {network: string}}>('/updatePaid', opts, (request, repl
   reply.send(payments);
 }));
 
+server.get<{Querystring: { invoiceId: string }}>('/invoiceById', opts, (request, reply) => instrument(async () => {
+  // Returns the invoice by ID
+  const invoiceId = request.query.invoiceId;
+  const c = await getContainer();
+  const invoice = await c.get<WalletService>(WalletService).getInvoiceById(invoiceId);
+  reply
+    .code(200)
+    .header('Content-Type', 'application/json; charset=utf-8')
+    .send(invoice);
+  return invoice;
+}));
+
 server.get<{Querystring: Pagination}>('/invoices', opts, (request, reply) => instrument(async () => {
   // Returns the list of wallets with balance, with pagination
   const from = request.query.from || 0;
@@ -139,7 +151,7 @@ server.post<{}>('/sweep', opts, async (request, reply) => {
 const start = async () => {
   try {
     await initContainer();
-    await server.listen({ port: 3000 })
+    await server.listen({ port: 8000 })
     console.log('Server listening at', server.server.address());
 
     const address = server.server.address()

@@ -1,12 +1,13 @@
 import { MongooseConnection } from "aws-lambda-helper";
 import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
-import { Injectable, NetworkedConfig, TypeUtils, ValidationUtils } from "ferrum-plumbing";
+import { Injectable, TypeUtils, ValidationUtils } from "ferrum-plumbing";
 import { WalletFactory, WalletFactory__factory } from "../typechain-types";
 import { BigNumber, ethers } from "ethers";
 import { Connection, Model, Schema } from "mongoose";
 import { randomBytes } from "crypto";
 import { AbiCoder } from "ethers/lib/utils";
 import { Invoice, InvoicePayment, WalletInstance, WalletServiceConfig } from "./Types";
+import { ETH_TOKEN } from "./HoldingWalletService";
 
 const DEFAULT_INVOICE_TIMEOUT = 3600 * 24 * 2 * 1000; // 2 days;
 const DEFAULT_TIME_BUCKET_SECONDS = 3600 * 12;
@@ -19,6 +20,9 @@ export const InvoiceModel = (con: Connection) => { const schema = new Schema({
         paid: { type: Boolean, required: true },
         timedOut: { type: Boolean, required: true },
         amountRaw: String,
+        amountDisplay: String,
+        currency: String,
+        symbol: String,
         creationTime: Number,
         item: Object,
     });
@@ -47,14 +51,20 @@ export class WalletService extends MongooseConnection implements Injectable {
         // Otherwise create a new wallet.
         // For simplicity, we just go ahead and create a new wallet
         ValidationUtils.allRequired({network, token, amountRaw, item});
+        console.log('USING NEW INVOICE', {network, token, amountRaw, item});
 
         this.verifyInit();
         const wallet = await this.newWallet(network, token, Math.round(Date.now() / 1000));
         const invoiceId = TypeUtils.bufferToHex(randomBytes(32));
+        const currency = EthereumSmartContractHelper.toCurrency(network, token);
+        const isBaseCurrency = !ethers.utils.isAddress(token);
         const invoice = {
             invoiceId,
             wallet,
             amountRaw,
+            amountDisplay: isBaseCurrency ? ethers.utils.formatEther(amountRaw) : await this.helper.amountToHuman(currency, amountRaw),
+            currency,
+            symbol: isBaseCurrency ? token : await this.helper.symbol(currency),
             payments: [],
             paid: false,
             timedOut: false,
@@ -67,6 +77,7 @@ export class WalletService extends MongooseConnection implements Injectable {
 
     async newWallet(network: string, token: string, timestampSeconds: number) {
         this.verifyInit();
+        console.log('newWallet', {network, token, timestampSeconds})
         const currency = EthereumSmartContractHelper.toCurrency(network, token);
         const wf = await this.walletFactory(network);
         const tb = this.config.timeBucketSeconds || DEFAULT_TIME_BUCKET_SECONDS;
@@ -74,7 +85,10 @@ export class WalletService extends MongooseConnection implements Injectable {
         const timeBucket = Math.round(timestampSeconds / tb) % tbRepeat;
         const timeBucketWithMargin = (Math.round(timestampSeconds / tb) - 1) % tbRepeat;
         const randomSeed = '0x' + TypeUtils.bufferToHex(randomBytes(32));
-        const salt = this.getSalt(token, timeBucketWithMargin, randomSeed);
+        const salt = this.getSalt(
+            EthereumSmartContractHelper.isBaseCurrency(`${network}:${token}`) ? ETH_TOKEN : token,
+            timeBucketWithMargin,
+            randomSeed);
         const wallet = await wf.getAddress(await wf.implementation(), salt);
 
         return {
@@ -213,7 +227,7 @@ export class WalletService extends MongooseConnection implements Injectable {
     async walletFactory(network: string): Promise<WalletFactory> {
         // new ethers instance of the walletfactory from typechain
         const provider = this.helper.ethersProvider(network);
-        const contract = this.config.walletFactoryConracts[network];
+        const contract = this.config.contracts[network]?.walletFactory;
         ValidationUtils.isTrue(!!contract, 'Contract not found for network: ' + network);
 
         return WalletFactory__factory.connect(

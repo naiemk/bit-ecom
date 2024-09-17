@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Wallet.sol";
 
 contract WalletFactory is Ownable, IWithInit {
+    string constant public VERSION = "0.0.1";
     address public implementation;
     address payable public initAddr;
 

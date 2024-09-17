@@ -33,13 +33,16 @@ export interface Invoice<T> {
     item: T;
 }
 
-export type HoldingWalletConfig = NetworkedConfig<string>;
-
 export interface WalletServiceConfig {
     // The address of the wallet factory
-    walletFactoryConracts: NetworkedConfig<string>;
-    holdingWallets: HoldingWalletConfig;
     timeBucketSeconds?: number;
     timeBucketRepeatLen?: number;
     invoiceTimeout?: number;
+    contracts: WalletConfig;
 }
+
+export interface WalletContractConfig {
+    walletFactory: string;
+    holdingWallet: string;
+}
+export type WalletConfig = NetworkedConfig<WalletContractConfig>;

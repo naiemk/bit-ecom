@@ -5,9 +5,10 @@ import { errorText, title, viewWidth } from "@/components/primitives";
 import { TokenDropdown } from "@/components/token-dropdown";
 import { unique } from "@/components/utils";
 import { Card } from "@nextui-org/card";
-import {Button, Chip, CircularProgress, Input, Link} from "@nextui-org/react";
-import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
-import { cfTurnstileToken, clientConfig, getNewInvoiceLoadable, getNewInvoiceRequest, invoice, roundUp, sendQuote, storedSelectedRSendToken, storedSelectedSendNetwork } from "../store/global";
+import {Button, CircularProgress, Input, Link} from "@nextui-org/react";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { cfTurnstileToken, clientConfig, getNewInvoiceLoadable, getNewInvoiceRequest,
+ roundUp, sendQuote, storedSelectedRSendToken, storedSelectedSendNetwork } from "../store/global";
 import { useEffect, useState } from "react";
 import { useRouter } from 'next/navigation'
 import Captcha from "@/components/captcha";
@@ -43,6 +44,7 @@ export default function SwapInCard() {
       console.log('Refreshing invoices...')
       refreshInvoice().catch(console.error);
     }
+    console.log('ERRORS', err);
   };
   return (
       <Card className={viewWidth()}>
@@ -83,9 +85,9 @@ export default function SwapInCard() {
         <Captcha onSuccess={setCaptcha}/>
         <Button color="primary" className="" variant="flat" size={'lg'}
           onClick={() => {validateAndMove();}}
-          disabled={!captcha || !quoteToken || invoiceGet.state === 'loading'}
+          // disabled={!captcha || !quoteToken || invoiceGet.state === 'loading'}
         >
-          Go to Payment {invoiceGet.state === 'loading' ? <CircularProgress /> : <></>}
+          Go to Payment-- {invoiceGet.state === 'loading' ? <CircularProgress /> : <></>}
         </Button>
         {invoiceGet.state === 'hasError' ?  <span className={errorText()}>{(invoiceGet.error as Error)?.message}</span> : <></>}
       </Card>

@@ -11,13 +11,13 @@ export class AppModule implements Module {
         await AppConfig.instance().loadConstants();
         await AppConfig.instance().forChainProviders();
         await AppConfig.instance().fromSecret('', 'BITECOM');
+        await AppConfig.instance().fromSecret('contracts', 'CONTRACTS');
         c.register(LoggerFactory, () => new LoggerFactory(l => new ConsoleLogger(l)));
         console.log('AppConfig loaded', 
-            // AppConfig.instance().get(),
+            AppConfig.instance().get(),
             process.env["CONFIG_FILE_BITECOM"]);
         c.registerSingleton(EthereumSmartContractHelper, () => new EthereumSmartContractHelper(AppConfig.instance().getChainProviders()));
         console.log('EthereumSmartContractHelper initialized', AppConfig.instance().getChainProviders());
-
 
         c.registerSingleton(WalletService, () => new WalletService(
             AppConfig.instance().get<WalletServiceConfig>(),

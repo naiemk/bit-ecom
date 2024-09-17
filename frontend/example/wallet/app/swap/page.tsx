@@ -3,7 +3,7 @@
 import { Card } from "@nextui-org/card";
 import {Button, Slider} from "@nextui-org/react";
 import { useAtom, useAtomValue } from "jotai";
-import { clientConfig, selectReceiveAddress, storedSelectedReceiveAmount, storedSelectedReceiveNetwork, storedSelectedReceiveToken } from "../store/global";
+import { clientConfig, numOrZero, selectReceiveAddress, storedSelectedReceiveAmount, storedSelectedReceiveNetwork, storedSelectedReceiveToken } from "../store/global";
 import { NetworkDropdown } from "@/components/network-dropdown";
 import { TokenDropdown } from "@/components/token-dropdown";
 import { subtitle, title, viewWidth } from "@/components/primitives";
@@ -29,8 +29,9 @@ export default function SwapPage() {
     if (!receiveAddress) {err.address= 'Did you provide the address"?'}
     if (!!receiveAddress && receiveAddress.length != 42) {err.address= 'Address is not valid'}
     setError(err);
-    if (!(err.network || err.token || err.address)) { setEditMode(false);}
+    if (!(err.network || err.token || err.address)) { setEditMode(false); }
   };
+  const [rangeMin, rangeMax] = !!token ? config.validRanges[token.currency].map(v => numOrZero(v)) : [0, 0];
   if (editMode) {
     return (
       <Card className={viewWidth()}>
@@ -58,14 +59,14 @@ export default function SwapPage() {
 
         <Slider   
           size="lg"
-          step={0.04}
+          step={Math.round(10000 * (rangeMax - rangeMin) / 10) / 10000}
           color="foreground"
-          label="Amount (0.01 - 0.5) ETH"
-          value={receiveAmount}
+          label={!!token ? `Amount (${rangeMin} - ${rangeMax})` : 'Amount'}
+          value={receiveAmount || rangeMin}
           showSteps={true} 
-          maxValue={0.5} 
-          minValue={0.01} 
-          defaultValue={0.2}
+          minValue={rangeMin} 
+          maxValue={rangeMax} 
+          defaultValue={(rangeMax + rangeMin) / 2}
           className=""
           onChange={v => {setReceiveAmount(v as any); setError({});}}
         />

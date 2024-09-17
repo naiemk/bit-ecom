@@ -1,16 +1,15 @@
-import { MongooseConnection } from "aws-lambda-helper";
 import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
 import { Injectable, ValidationUtils } from "ferrum-plumbing";
 import { HoldingWallet, HoldingWallet__factory, } from "../typechain-types";
-import { HoldingWalletConfig } from "./Types";
 
 import { ISignerProvider } from "../EnvSignerProvider";
+import { WalletServiceConfig } from "./Types";
 
-const ETH_TOKEN = '0x0000000000000000000000000000000000000001';
+export const ETH_TOKEN = '0x0000000000000000000000000000000000000001';
 
 export class HoldingWalletService implements Injectable {
   constructor(
-    private config: HoldingWalletConfig,
+    private config: WalletServiceConfig,
     private helper: EthereumSmartContractHelper,
     private signer: ISignerProvider,
     ) {
@@ -52,7 +51,7 @@ export class HoldingWalletService implements Injectable {
   async HoldingWallet(network: string): Promise<HoldingWallet> {
       // new ethers instance of the walletfactory from typechain
       const provider = this.helper.ethersProvider(network);
-      const contract = this.config[network];
+      const contract = this.config.contracts[network]?.holdingWallet;
       ValidationUtils.isTrue(!!contract, 'Holding wallet contract not found for network: ' + network);
 
       return HoldingWallet__factory.connect(

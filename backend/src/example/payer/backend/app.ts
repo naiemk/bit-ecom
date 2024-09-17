@@ -16,6 +16,7 @@ import { SwapInvoiceType } from "./Types";
 import { HoldingWalletService } from "../../../data/HoldingWalletService";
 import cors from '@fastify/cors'
 import { ethers } from "ethers";
+import { Utils } from "./utils";
 require("dotenv").config({ path: process.cwd() + "/localConfig/dev.env" });
 console.log("PATH", process.cwd() + "/localConfig/dev.env");
 
@@ -96,11 +97,11 @@ function configServer(server: FastifyInstance) {
    * Returns an invoice. Invoice has all the necessary information about payments (i.e. if the invoice is paid)
    * and all the extra data on the invoice, including traching deliverries, etc.
    */
-  server.get<{ Querystring: { id: string } }>("/invoicebyid", { }, (request) =>
+  server.get<{ Querystring: { invoiceId: string } }>("/invoicebyid", { }, (request) =>
       instrument(async () => {
         const c = getContainer();
-        ValidationUtils.isTrue(!!request.query.id, 'Invoice ID is required');
-        return await c.get<WalletService>(WalletService).getInvoiceById(request.query.id);
+        ValidationUtils.isTrue(!!request.query.invoiceId, 'Invoice ID is required');
+        return await c.get<WalletService>(WalletService).getInvoiceById(request.query.invoiceId);
       })
   );
 
@@ -157,18 +158,22 @@ function configServer(server: FastifyInstance) {
     (request, reply) =>
       instrument(async () => {
         const { fromCurrency, toAddress, toCurrency, toAmountRaw } = request.body as any;
-        const c = await getContainer();
-        const fromAmountRaw = (await c.get<SwapService>(SwapService).calculateSwapAmount(
-          fromCurrency, toCurrency, toAmountRaw)).amount;
+        const c = getContainer();
+        const helper = c.get<EthereumSmartContractHelper>(EthereumSmartContractHelper);
+        const fromAmount = (await c.get<SwapService>(SwapService).calculateSwapAmount(
+          fromCurrency, toCurrency, toAmountRaw));
         const [fromNetwork,] = EthereumSmartContractHelper.parseCurrency(fromCurrency);
         const [toNetwork,] = EthereumSmartContractHelper.parseCurrency(toCurrency);
         const item = {
-          fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, fromAmountRaw, toAmountRaw,
+          fromNetwork, fromCurrency, toAddress, toNetwork, toCurrency, fromAmountRaw: fromAmount.amountRaw, toAmountRaw,
           payed: false, paymentTxs: [],
+          fromAmountDisplay: fromAmount.amount, toAmountDisplay: fromAmount.targetAmount,
+          fromSymbol: await Utils.currencySymbol(helper, fromAmount.sourceCurrency),
+          toSymbol: await Utils.currencySymbol(helper, fromAmount.targetCurrency),
         } as SwapInvoiceType;
         const invoice = await c
           .get<WalletService>(WalletService)
-          .newInvoice(fromNetwork, parseCurrency(fromCurrency)[1], fromAmountRaw, item);
+          .newInvoice(fromNetwork, parseCurrency(fromCurrency)[1], fromAmount.amountRaw, item);
         reply.send(invoice);
       })
   );

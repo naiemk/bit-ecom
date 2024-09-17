@@ -11,6 +11,8 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
  */
 contract HoldingWallet is Ownable {
     using SafeERC20 for IERC20;
+
+    string constant public VERSION = "0.0.1";
     mapping(address => bool) public payers;
     uint constant timePeriod = 24 hours;
     address constant public ETH_ADDRESS = 0x0000000000000000000000000000000000000001;

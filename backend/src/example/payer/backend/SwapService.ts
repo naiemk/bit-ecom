@@ -3,6 +3,7 @@ import { Injectable, LocalCache, NetworkedConfig, Networks, TypeUtils } from "fe
 import { BigNumber } from "bignumber.js";
 import Moralis from 'moralis';
 import { WETH_CONFIG } from "./WethConfig";
+import { ethers } from "ethers";
 
 const CACHE_TIMEOUT = 3600 * 10000;
 const GAS_PRICE_EXTENSION_RATIO = 2.0; // 0.25 more gas price to ensure speed and fluctuation
@@ -19,6 +20,7 @@ export interface SwapConfig {
 
 export interface SwapAmount {
   amount: string;
+  amountRaw: string;
   amountUsd: string;
   processingGasFeeUsd: string;
   paymentGasFeeUsd: string;
@@ -28,6 +30,7 @@ export interface SwapAmount {
   targetCurrency: string;
   targetPrice: string;
   targetAmount: string;
+  targetAmountRaw: string;
 }
 
 export class SwapService implements Injectable {
@@ -43,6 +46,7 @@ export class SwapService implements Injectable {
   async usdPrice(currency: string) {
     return this.cache.getAsync(currency, async () => {
       const [network, token] = EthereumSmartContractHelper.parseCurrency(currency);
+      console.log('GETTING PRICE FOR ', {currency, network, token, Weth: WETH_CONFIG[network]})
       const priceObj = await Moralis.EvmApi.token.getTokenPrice({
         chain: '0x' + Networks.for(network).chainId.toString(16),
         address: EthereumSmartContractHelper.isBaseCurrency(currency) ? WETH_CONFIG[network] : token,
@@ -58,6 +62,7 @@ export class SwapService implements Injectable {
   }
 
   async calculateSwapAmount(fromCurrency: string, toCurrency: string, receiveAmountRaw: string): Promise<SwapAmount> {
+    console.log('calculateSwapAmount', fromCurrency, toCurrency, receiveAmountRaw);
     const [fromNetwork,] = EthereumSmartContractHelper.parseCurrency(fromCurrency);
     const [toNetwork,] = EthereumSmartContractHelper.parseCurrency(toCurrency);
     const toAmount = new BigNumber(await this.helper.amountToHuman(toCurrency, receiveAmountRaw));
@@ -75,6 +80,7 @@ export class SwapService implements Injectable {
     const amount = amountUsd.div(fromPrice);
     return {
       amount: amount.toFixed(),
+      amountRaw: await this.helper.amountToMachine(toCurrency, amount.toFixed()),
       amountUsd: amountUsd.toFixed(),
       paymentGasFeeUsd: paymentGasUsd.toFixed(),
       processingGasFeeUsd: processGasUsd.toFixed(),
@@ -84,6 +90,7 @@ export class SwapService implements Injectable {
       targetPrice: toPrice.toFixed(),
       targetCurrency: toCurrency,
       targetAmount: toAmount.toFixed(),
+      targetAmountRaw: receiveAmountRaw,
     } as SwapAmount;
   }
 
@@ -91,4 +98,5 @@ export class SwapService implements Injectable {
     console.log('GAAS PRICE',network, await this.helper.gasPrice(network))
     return new BigNumber(await this.helper.gasPrice(network)).multipliedBy(GAS_PRICE_EXTENSION_RATIO).div(new BigNumber(10).pow(18)).multipliedBy(gasLimit);
   }
+
 }

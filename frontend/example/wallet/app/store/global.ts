@@ -63,6 +63,7 @@ export interface ClientConfig {
   turnstileSitekey: string;
   tokenConfig: { [k: string]: CurrencyConfig };
   networkConfig: { [k: string]: NetworkConfig }
+  validRanges: { [k: string]: string[] }
 }
 
 export const clientConfig = atom(get => get(config).data as ClientConfig);
@@ -132,6 +133,18 @@ export const getNewInvoiceLoadable = atom({state: '', error: undefined, data: un
 
 // Invoice page
 export const invoice = atom({} as Invoice);
+export const invoinceIdFromUrl = atom('');
+export const getInvoiceById = atom(async (get,) => {
+  const id = get(invoinceIdFromUrl);
+  console.log('Getting invoice', id);
+  const res = await fetch(`${backend()}/invoicebyid?invoiceId=${id}`);
+  if ((res.status / 100) != 2) { throw new Error(await res.text())}
+  const rv = await res.json() as Invoice;
+  console.log('Got invoice', rv);
+  return rv;
+});
+
+export const getInvoiceByIdLoadable = loadable(getInvoiceById);
 
 export interface SwapAmount {
   amount: string;
@@ -145,8 +158,52 @@ export interface SwapAmount {
   targetPrice: string;
 }
 
+export interface SwapItem {
+  fromAmountRaw: string, 
+  fromCurrency: string,
+  fromNetwork: string,
+  payed: boolean,
+  toAddress: string,
+  toAmountRaw: string,
+  toCurrency: string,
+  toNetwork: string,
+  paymentTxs: string[],
+}
+
+export interface InvoicePayment {
+    network: string;
+    currency: string;
+    txId: string;
+    from: string;
+    to: string
+    amountRaw: string;
+    timestamp: number;
+}
+
+export interface WalletInstance {
+    network: string;
+    address: string;
+    addressForDisplay: string;
+    currency: string;
+    timeBucket: number;
+    timeBucketWithMargin: number;
+    randomSeed: string;
+    salt: string;
+    sweepTxs: string[];
+}
+
 export interface Invoice {
-  invoiceId: string,
+  invoiceId: string;
+  wallet: WalletInstance;
+  amountRaw: string;
+  amountDisplay: string;
+  symbol: string;
+  currency: string;
+  payments: InvoicePayment[];
+  paid: boolean;
+  timedOut: boolean;
+  creationTime: number;
+  item: SwapItem;
 }
 
 export function roundUp(num: string): string {
@@ -155,4 +212,9 @@ export function roundUp(num: string): string {
   } catch {
     return num;
   }
+}
+
+export function numOrZero(v: string): number {
+  const num = Number(v);
+  return Number.isFinite(num) ? num : 0;
 }
