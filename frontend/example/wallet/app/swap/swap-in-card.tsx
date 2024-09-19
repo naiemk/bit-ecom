@@ -19,7 +19,7 @@ export default function SwapInCard() {
   const invoiceGet = useAtomValue(getNewInvoiceLoadable);
   const [errors, setError] = useState({} as any);
   const [showFee, setShowFee] = useState(false);
-  const [captcha, setCaptcha] = useAtom(cfTurnstileToken);
+  const [, setCaptcha] = useAtom(cfTurnstileToken);
   const [sendNetwork, setSendNetwork] = useAtom(storedSelectedSendNetwork);
   const [sendToken, setSendToken] = useAtom(storedSelectedRSendToken);
   const quoteLoading = useAtomValue(sendQuote);
@@ -70,24 +70,24 @@ export default function SwapInCard() {
           error={errors?.token}
         />
 
-        {!!quoteToken && (
-          <Input
-            size={'lg'} type="text" label="Payment amount" placeholder={``}
-            variant="bordered"
-            value={`${roundUp(quote.amount)} ${quoteToken.symbol}`}
-            disabled={true}
-            readOnly={true}
-            description={showFee ? 'FEE INFORMATION' : ''}
-            endContent={<Link onClick={() => setShowFee(!showFee)}>fees?</Link>}
-            />
-        )}
+        <Input
+          size={'lg'} type="text" label="Payment amount required" placeholder={``}
+          variant="bordered"
+          value={!!quoteToken ? (`${roundUp(quote.amount)} ${quoteToken.symbol}`) : ''}
+          disabled={true}
+          readOnly={true}
+          isInvalid={quoteLoading.state === 'hasError'}
+          description={showFee ? 'FEE INFORMATION' : ''}
+          endContent={<Link onClick={() => setShowFee(!showFee)}>fees?</Link>}
+          errorMessage={quoteLoading.state === 'hasError' ? (quoteLoading.error as Error)?.message : 'NO ERR'}
+          />
 
         <Captcha onSuccess={setCaptcha}/>
         <Button color="primary" className="" variant="flat" size={'lg'}
           onClick={() => {validateAndMove();}}
           // disabled={!captcha || !quoteToken || invoiceGet.state === 'loading'}
         >
-          Go to Payment-- {invoiceGet.state === 'loading' ? <CircularProgress /> : <></>}
+          Go to Payment {invoiceGet.state === 'loading' ? <CircularProgress /> : <></>}
         </Button>
         {invoiceGet.state === 'hasError' ?  <span className={errorText()}>{(invoiceGet.error as Error)?.message}</span> : <></>}
       </Card>

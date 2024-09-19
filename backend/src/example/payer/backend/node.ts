@@ -23,7 +23,7 @@ interface NodeConfig {
 }
 
 function dateRange(): [number, number] {
-  const lookBack = 24 * 3600 * 1000;
+  const lookBack = 4 * 24 * 3600 * 1000;
   return [Date.now() - lookBack, Date.now()];
 }
 
@@ -157,10 +157,16 @@ class Node implements Injectable {
   }
 
   async notifyInvoicesChanged(invoiceIds: string[]) {
+    if (!invoiceIds || invoiceIds.length === 0) {
+      return;
+    }
     if (!!this.config.walletServiceEndpoint) {
+      console.log(`Caliing "${this.config.walletServiceEndpoint}/invoiceupdated", with ${invoiceIds.length} invoice ids`);
       await axios.post(`${this.config.walletServiceEndpoint}/invoiceupdated`, {invoiceIds}, {
         headers: { 'X-NodeSecret': this.config.nodeSecret }
       });
+    } else {
+      console.log('No wallet service endpoint configured. Not notifying');
     }
   }
 

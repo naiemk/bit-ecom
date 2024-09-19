@@ -96,7 +96,8 @@ export const sendQuoteRaw = atom<Promise<SwapAmount>>(async (get, { signal }) =>
   if (!toToken) { return ({}) as any; }
   const toAmountRaw = machineAmount(toAmount.toString(), toToken);
   const fromCurrency = `${get(storedSelectedSendNetwork)}:${get(storedSelectedRSendToken)}`;
-  const res = await fetch(`${backend()}/quote?fromCurrency=${fromCurrency}&toCurrency=${toCurrency}&toAmountRaw=${toAmountRaw}`, {signal});
+  // console.log('CALLING', `${backend()}/quote?fromCurrency=${fromCurrency}&toCurrency=${toCurrency}&toAmountRaw=${toAmountRaw}`, {signal});
+  const res = await fetch(`${backend()}/quote?fromCurrency=${fromCurrency}&toCurrency=${toCurrency}&toAmountRaw=${toAmountRaw}`, /*{signal}*/);
   return await res.json() as SwapAmount;
 });
 export const sendQuote = loadable(sendQuoteRaw);
@@ -173,10 +174,12 @@ export interface SwapItem {
 export interface InvoicePayment {
     network: string;
     currency: string;
+    symbol: string;
     txId: string;
     from: string;
     to: string
     amountRaw: string;
+    amountDisplay: string;
     timestamp: number;
 }
 

@@ -32,6 +32,7 @@ export default function SwapPage() {
     if (!(err.network || err.token || err.address)) { setEditMode(false); }
   };
   const [rangeMin, rangeMax] = !!token ? config.validRanges[token.currency].map(v => numOrZero(v)) : [0, 0];
+  // console.log('ATT', {receiveAmount, rangeMin, rangeMax})
   if (editMode) {
     return (
       <Card className={viewWidth()}>
@@ -59,7 +60,7 @@ export default function SwapPage() {
 
         <Slider   
           size="lg"
-          step={Math.round(10000 * (rangeMax - rangeMin) / 10) / 10000}
+          step={Math.round(10000 * (rangeMax - rangeMin) / 10) / 10000 || 1}
           color="foreground"
           label={!!token ? `Amount (${rangeMin} - ${rangeMax})` : 'Amount'}
           value={receiveAmount || rangeMin}

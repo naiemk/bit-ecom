@@ -7,7 +7,8 @@
     "start": "nodemon ./src/app.ts",
     "example": "nodemon ./src/example/payer/backend/app.ts",
     "lint": "eslint . --ext .ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "process-invoice": "ts-node ./src/example/payer/backend/node.ts --run process-invoice"
   },
   "author": "",
   "license": "ISC",

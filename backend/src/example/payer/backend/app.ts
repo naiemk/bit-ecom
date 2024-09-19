@@ -121,10 +121,12 @@ function configServer(server: FastifyInstance) {
 
   server.post("/invoiceupdated", {}, async (request, reply) => {
     const body = await request.body as any;
+    console.log("UPDATE CALLED ", {body});
     ValidationUtils.isTrue(!!body?.invoiceIds, 'invoiceIds are required');
     const invoiceIds: string[] = body.invoiceIds || [];
     const walletService = await getContainer().get<WalletService>(WalletService);
     const invoices = await walletService.getInvoicesById(invoiceIds);
+    console.log('Sending update ping to clients. Total clients connected is: ', wsMux.clients.size);
     if (!!invoices) {
       for(const i of invoices) {
         wsMux.notify(i.invoiceId, i);

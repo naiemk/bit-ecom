@@ -9,35 +9,40 @@ import { viewWidth } from "@/components/primitives";
 import { Spinner } from "@nextui-org/spinner";
 import { useHydrateAtoms } from "jotai/utils";
 import { UiUtils } from "@/app/uiUtils";
-import { atomWithObservable } from 'jotai/utils'
 import { webSocket } from 'rxjs/webSocket';
-import { interval, map, Subject } from "rxjs";
 import { useEffect } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@nextui-org/popover";
 
-const invoiceSubject = new Subject<Invoice>();
-const invoiceFromWs = atomWithObservable(() => invoiceSubject, { initialValue: null });
-const webSocketSubed = atom(false);
+const invoiceFromWs = atom<Invoice|null>(null);
+const SOCKET_LOADED = { loaded: false, ws: null as any };
 
 const InvoicePage = () => {
 	const { invoiceid } = useParams<{ invoiceid: string }>();
 	useHydrateAtoms([[invoinceIdFromUrl, invoiceid]]);
 	const invoiceLoadable = useAtomValue(getInvoiceByIdLoadable);
-  const [wsInvoice] = useAtom(invoiceFromWs);
+  const [wsInvoice, setWsInvoice] = useAtom(invoiceFromWs);
 	const invoice = wsInvoice && wsInvoice?.invoiceId ? wsInvoice : (invoiceLoadable as any).data as any as Invoice;
   if (wsInvoice) {
     console.log("USING WS INVOICE", wsInvoice);
   }
   
   useEffect(() => {
-    if (invoiceid) {
+    if (invoiceid && !SOCKET_LOADED.loaded) {
+      SOCKET_LOADED.loaded = true;
       const ws = webSocket(`${backend()}/invoicews?id=${invoiceid}`);
+      SOCKET_LOADED.ws = ws;
       console.log('Subscribed to websocket');
       ws.subscribe({
-        next: i => invoiceSubject.next(JSON.parse(i as any)),
+        next: i => { 
+          console.log('Received invoice update: ', i)
+          if ((i as any).data) {
+            console.log('Setting invoice to', (i as any).data)
+            setWsInvoice((i as any).data);
+          }
+        },
         error: e => console.error(e),
         complete: () => console.log('ws closed...') });
-      return () => { ws.complete(); console.log('Force closed ws'); }
+      return () => { /*ws.complete(); */console.log('Force closed ws'); }
     }
   }, [invoiceid]);
 
@@ -94,7 +99,7 @@ const InvoicePage = () => {
               </div>
             </PopoverContent>
           </Popover>
-          <p className="text-sm font-bold">{paymentAddress.substring(0, 6)}...{paymentAddress.substring(paymentAddress.length - 4, paymentAddress.length)}</p>
+          <p className="text-sm font-bold">{paymentAddress.substring(0, 8)}...{paymentAddress.substring(paymentAddress.length - 6, paymentAddress.length)}</p>
         </div>
         <div className="flex-1 ml-4 text-right pb-8">
         <p className="text-2xl font-bold">{UiUtils.roundAmount(invoice?.amountDisplay)} {invoice?.symbol}</p>
@@ -124,9 +129,11 @@ const InvoicePage = () => {
       <div className="mb-4">
         {
           invoice.paid ? (
-            <p className="text-sm text-green-500">Payment received</p>
+            <p className="text-xl text-green-500">Payment received</p>
           ) : (
-            <p className="text-sm text-violet-500">Payment pending</p>
+            invoice.payments?.length > 0 ? (
+              <p className="text-sm text-violet-500">Paid {invoice.payments[0].amountDisplay} {invoice.payments[0].symbol} so far. Remaining required</p>
+            ) : (<p className="text-sm text-violet-500">Payment pending</p>)
           )
         }
       </div>

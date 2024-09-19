@@ -24,7 +24,7 @@ export class WsMux {
     if (socket.readyState == WebSocket.OPEN) {
       socket.send(JSON.stringify({
         'type': 'update',
-        'date': data
+        'data': data
       }));
       console.log(`Notified update for invoice: ${id}`);
     }

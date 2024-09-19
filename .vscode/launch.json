@@ -5,11 +5,28 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ts-node",
+      "name": "Backend Service",
       "type": "node",
       "request": "launch",
       "args": [
         "src/example/payer/backend/app.ts"
+      ],
+      "runtimeArgs": [
+        "-r",
+        "ts-node/register"
+      ],
+      "cwd": "${workspaceRoot}/backend",
+      "protocol": "inspector",
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "Node Process Invoice",
+      "type": "node",
+      "request": "launch",
+      "args": [
+        "src/example/payer/backend/node.ts",
+        "--run",
+        "process-invoice"
       ],
       "runtimeArgs": [
         "-r",

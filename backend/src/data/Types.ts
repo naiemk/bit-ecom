@@ -3,10 +3,12 @@ import { NetworkedConfig } from "ferrum-plumbing";
 export interface InvoicePayment {
     network: string;
     currency: string;
+    symbol: string;
     txId: string;
     from: string;
     to: string
     amountRaw: string;
+    amountDisplay: string;
     timestamp: number;
 }
 

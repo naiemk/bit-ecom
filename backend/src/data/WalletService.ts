@@ -1,6 +1,6 @@
 import { MongooseConnection } from "aws-lambda-helper";
 import { EthereumSmartContractHelper } from "aws-lambda-helper/dist/blockchain";
-import { Injectable, TypeUtils, ValidationUtils } from "ferrum-plumbing";
+import { Injectable, Networks, TypeUtils, ValidationUtils } from "ferrum-plumbing";
 import { WalletFactory, WalletFactory__factory } from "../typechain-types";
 import { BigNumber, ethers } from "ethers";
 import { Connection, Model, Schema } from "mongoose";
@@ -133,11 +133,11 @@ export class WalletService extends MongooseConnection implements Injectable {
         return ethers.utils.keccak256(abi.encode(['address', 'uint256', 'bytes32'], [token, timestamp, randomSeed]));
     }
 
-    async payInvoice(invoiceId: string, payment: InvoicePayment) {
+    async payInvoice(invoiceId: string, payment: InvoicePayment, hasEnoughPayments: boolean) {
         // Implement the logic to pay the invoice
         // For simplicity, we just mark the invoice as paid
         this.verifyInit();
-        await this.invoiceModel!.updateOne({ invoiceId }, { $push: { payments: payment }, $set: { paid: true } }).exec();
+        await this.invoiceModel!.updateOne({ invoiceId }, { $set: { paid: hasEnoughPayments, payments: [payment] } }).exec();
     }
 
     async timeOutInvoice(invoiceId: string, payment: InvoicePayment) {
@@ -152,15 +152,18 @@ export class WalletService extends MongooseConnection implements Injectable {
      * Get all the payment for time range and pay them if they are paid
      */
     async checkAndUpdatePayments(network: string, fromTime: number, toTime: number) {
+        const expired = (i: Invoice<any>) => (Date.now() - i.creationTime) > 
+            (this.config.invoiceTimeout || DEFAULT_INVOICE_TIMEOUT);
+
         const invoicePayments = await this.checkPayments(network, fromTime, toTime);
-        const paid = invoicePayments.filter(hasEnoughPayments);
-        const timedOut = invoicePayments.filter(i => (Date.now() - i.creationTime) > 
-            (this.config.invoiceTimeout || DEFAULT_INVOICE_TIMEOUT));
-        const f = paid.map(i => this.payInvoice(i.invoiceId, i.payments[0]));
-        const t = timedOut.map(i => this.payInvoice(i.invoiceId, i.payments[0]));
+        const hasPayment = invoicePayments.filter(i => (i.payments || []).length > 0 && !expired(i));
+        const timedOut = invoicePayments.filter(expired);
+        const f = hasPayment.map(i => this.payInvoice(i.invoiceId, i.payments[0], hasEnoughPayments(i)));
+        // TODO: Do something with timed out
+        const t = timedOut.map(i => this.payInvoice(i.invoiceId, i.payments[0], hasEnoughPayments(i)));
         await Promise.all(f);
         await Promise.all(t);
-        return [...paid, ...timedOut];
+        return [...hasPayment, ...timedOut];
     }
 
     async getInvoicesForSweep(network: string, fromTime: number, toTime: number): Promise<Invoice<any>[]> {
@@ -185,25 +188,34 @@ export class WalletService extends MongooseConnection implements Injectable {
         const invoices = await this.invoiceModel!.find({ paid: false, 'wallet.network': network, creationTime: { $gte: fromTime, $lt: toTime } }).exec();
         console.log('$invoices', invoices.length, 'from', new Date(fromTime), 'to', new Date(toTime));
         const withBal = await this.filterInvoicesWithBalance(network, invoices.map(i => i.toJSON()));
-        return withBal.map(invNpay => ({
+        return withBal.filter(invNpay => { // Filter invoices with new balance
+            const [inv, pay] = invNpay;
+            // Notes: we have only one payment at the moment as we just check the balance
+            return BigNumber.from(pay[0].amountRaw).gt(totalAmount(inv.payments || []))
+        }).map(invNpay => ({
                 ...invNpay[0],
                 payments: invNpay[1],
             } as Invoice<any>));
     }
 
+    /**
+     * Filters invoices with balance on chain. For simplicity, if an invoice is paid partially in multiple transactions,
+     *  we only keep one payment that reflects the total balance.
+     */
     async filterInvoicesWithBalance(network: string, invoices: Invoice<any>[]): Promise<[Invoice<any>, payments: InvoicePayment[]][]> {
         const invoiceLoockup = {} as {[key: string]: Invoice<any>};
         invoices.forEach(i => invoiceLoockup[i.wallet.address.toLocaleLowerCase()] = i);
         const walletAddresses = invoices.map(i => i.wallet.address.toLocaleLowerCase());
-        const tokens = new Set(invoices.map(i => EthereumSmartContractHelper.parseCurrency(i.wallet.currency)[1]));
+        const tokens = new Set(invoices
+            .filter(i => !EthereumSmartContractHelper.isBaseCurrency(i.wallet.currency))
+            .map(i =>   EthereumSmartContractHelper.parseCurrency(i.wallet.currency)[1]));
         console.log('wallets', walletAddresses, tokens);
         const withBal = await (await this.walletFactory(network)).filterWithBalance(Array.from(tokens), walletAddresses);
-        // TODO: Merge payment with existing payments...
-        return withBal.filter(w => w.tokens.length > 0)
-            .map(w => ([
+        return Promise.all(withBal.filter(w => w.tokens.length > 0)
+            .map(async w => ([
                 { ...invoiceLoockup[w.wallet.toLocaleLowerCase()]} as Invoice<any>,
-                invoiceToPayments(network, w.tokens, w.balances.map(b => b.toString()))
-            ]));
+                await invoiceToPayments(this.helper, network, w.tokens, w.balances.map(b => b.toString()))
+            ])));
     }
 
     /**
@@ -236,25 +248,37 @@ export class WalletService extends MongooseConnection implements Injectable {
     }
 }
 
-function invoiceToPayments(network: string, tokens: string[], balances: string[]): InvoicePayment[] {
+async function invoiceToPayments(helper: EthereumSmartContractHelper, network: string, tokens: string[], balances: string[]): Promise<InvoicePayment[]> {
     const txId = ""; // TODO: Generate a unique transaction ID
     const from = ""; // TODO: Get the sender address
     const to = ""; // TODO: Get the recipient address
-    return tokens.map((t, i) => {
+    return Promise.all(tokens.map(async (t, i) => {
         const amountRaw = balances[i];
+        const currency = EthereumSmartContractHelper.toCurrency(network, t);
+        const baseCurrency = Networks.for(network).baseSymbol;
+        const [symbol, amountDisplay] = t.toLocaleLowerCase() === ethers.constants.AddressZero.toLocaleLowerCase() ?
+            [baseCurrency, ethers.utils.formatEther(amountRaw).toString()] :
+            [await helper.symbol(currency), await helper.amountToHuman(currency, amountRaw)]; 
         const timestamp = Math.round(Date.now() / 1000); // TODO: Get the current timestamp
 
         return {
             network,
-            currency: EthereumSmartContractHelper.toCurrency(network, t),
+            currency,
             txId,
             from,
             to,
             amountRaw,
+            amountDisplay,
+            symbol,
             timestamp
         } as InvoicePayment;
-    });
+    }));
 }
+
+function totalAmount(payments: InvoicePayment[]): BigNumber {
+    return payments.map(i => BigNumber.from(i.amountRaw)).reduce((prev, cur) => cur.add(prev), BigNumber.from(0));
+}
+
 function hasEnoughPayments(invoice: Invoice<any>) {
-    return invoice.payments.length > 0 && BigNumber.from(invoice.payments[0].amountRaw).gte(BigNumber.from(invoice.amountRaw || '0'));
+    return invoice.payments.length > 0 && totalAmount(invoice.payments).gte(BigNumber.from(invoice.amountRaw || '0'));
 }
